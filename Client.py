@@ -1,57 +1,34 @@
-import xmlrpc.client # implement communication between the client and the XML-RPC server
-import datetime
+import socket
+import threading
 
-try:
-    s = xmlrpc.client.ServerProxy('http://localhost:8000')
-except Exception as e:
-    print(f"Failed to connect to server: {e}")
-    exit(1)
-
-# Function to add note
-def add_note():
-    topic_name = input("Enter topic name: ")
-    note_name = input("Enter note name: ")
-    text = input("Enter note text: ")
-    timestamp = datetime.datetime.now().strftime("%m/%d/%y - %H:%M:%S")
-    retry_count = 3
-    for attempt in range(retry_count):
+# receive messages from the server
+def receive_messages(client_socket):
+    while True:
         try:
-            s.add_or_update_topic(topic_name, note_name, text, timestamp)
-            print("Note added successfully.")
-            break  
+            message = client_socket.recv(1024).decode()
+            if message == "You are disconnected from the server":
+                break  # Exit loop if disconnected
+            print(message)
         except Exception as e:
-            if attempt < retry_count - 1:
-                print(f"Attempt {attempt + 1} failed, retrying...")
-            else:
-                print("Failed to add note after several attempts. Please try again later.")
+            print(f"Connection error: {e}")
+            break
+    client_socket.close()  # Ensure socket is closed
 
-# Function to view notes by topic
-def view_notes():
-    topic_name = input("Enter topic name to view notes: ")
-    notes = s.get_topic_notes(topic_name)
-    if not notes:
-        print("No notes found for this topic.")
-    else:
-        for note in notes:
-            print(f"Name: {note['name']}, Text: {note['text']}, Timestamp: {note['timestamp']}")
+def main():
+    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    client_socket.connect(('localhost', 5555))
 
-# Add a option for the user to search Wikipedia and add info
-def search_wikipedia_and_add():
-    topic_name = input("Enter topic name to search on Wikipedia and add info: ")
-    wikipedia_url = s.add_wikipedia_info(topic_name)
-    print(f"Wikipedia info added. See more at: {wikipedia_url}")
+    # Start a thread to listen for messages from the server
+    receive_thread = threading.Thread(target=receive_messages, args=(client_socket,))
+    receive_thread.start()
 
-# Update the main loop to include the new option
-while True:
-    print("(1) Add Info\n(2) View Info\n(3) Search Wikipedia and Add Info\n(4) Exit")
-    choice = input("Choose an action: ")
-    if choice == '1':
-        add_note()
-    elif choice == '2':
-        view_notes()
-    elif choice == '3':
-        search_wikipedia_and_add()
-    elif choice == '4':
-        break
-    else:
-        print("Invalid choice.")
+    # Main loop to send messages to the server
+    while True:
+        message = input()
+        client_socket.send(message.encode())
+        if message == '/disconnect':
+            client_socket.close()
+            break  # Exit if disconnected
+
+if __name__ == "__main__":
+    main()
